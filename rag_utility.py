@@ -21,7 +21,7 @@ embedding = HuggingFaceEmbeddings(
 )
 
 # ---------------------
-# LLM (Groq)
+# LLM
 # ---------------------
 llm = ChatGroq(
     model="llama-3.3-70b-versatile",
@@ -30,33 +30,49 @@ llm = ChatGroq(
 
 
 # ---------------------
-# 1️⃣ Process Multiple PDFs (IN-MEMORY)
+# 1️⃣ Process PDFs
 # ---------------------
 def process_documents(uploaded_files):
 
     all_docs = []
+    failed_files = []
 
     for file in uploaded_files:
-        # Save temporarily
         temp_path = f"temp_{file.name}"
-        with open(temp_path, "wb") as f:
-            f.write(file.getbuffer())
 
-        # Load PDF
-        loader = PyPDFLoader(temp_path)
-        docs = loader.load()
+        try:
+            # Save file temporarily
+            with open(temp_path, "wb") as f:
+                f.write(file.getbuffer())
 
-        # Add metadata (file name)
-        for doc in docs:
-            doc.metadata["source"] = file.name
+            # Load PDF
+            loader = PyPDFLoader(temp_path)
+            docs = loader.load()
 
-        all_docs.extend(docs)
+            # If empty → mark failed
+            if not docs:
+                failed_files.append(file.name)
+                continue
 
-        # Remove temp file
-        os.remove(temp_path)
+            # Add metadata
+            for doc in docs:
+                doc.metadata["source"] = file.name
+
+            all_docs.extend(docs)
+
+        except Exception:
+            failed_files.append(file.name)
+
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+
+    # ❌ If no valid docs
+    if not all_docs:
+        return None, failed_files
 
     # ---------------------
-    # Split Documents
+    # Split
     # ---------------------
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=1000,
@@ -65,22 +81,18 @@ def process_documents(uploaded_files):
 
     chunks = splitter.split_documents(all_docs)
 
-    # ✅ CRITICAL FIX (avoid empty embeddings error)
     if not chunks:
-        raise None
-
-    # Optional debug
-    print(f"Total chunks created: {len(chunks)}")
+        return None, failed_files
 
     # ---------------------
-    # Create Vector DB (in-memory)
+    # Vector DB
     # ---------------------
     vectordb = Chroma.from_documents(
         documents=chunks,
         embedding=embedding
     )
 
-    return vectordb
+    return vectordb, failed_files
 
 
 # ---------------------
@@ -101,7 +113,6 @@ def answer_question(vectordb, query):
 
     answer = response["result"]
 
-    # Extract unique source file names
     sources = list(set([
         doc.metadata.get("source", "Unknown")
         for doc in response["source_documents"]
