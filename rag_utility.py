@@ -1,20 +1,28 @@
 import os
+from dotenv import load_dotenv
+
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from langchain_groq import ChatGroq
 from langchain_classic.chains import RetrievalQA
-from dotenv import load_dotenv
 
+# ---------------------
+# Load ENV
+# ---------------------
 load_dotenv()
 
-# Load embedding model
+# ---------------------
+# Embedding Model
+# ---------------------
 embedding = HuggingFaceEmbeddings(
     model_name="sentence-transformers/all-MiniLM-L6-v2"
 )
 
-# Load LLM
+# ---------------------
+# LLM (Groq)
+# ---------------------
 llm = ChatGroq(
     model="llama-3.3-70b-versatile",
     temperature=0
@@ -44,17 +52,29 @@ def process_documents(uploaded_files):
 
         all_docs.extend(docs)
 
-        # Clean temp file
+        # Remove temp file
         os.remove(temp_path)
 
-    # Split
+    # ---------------------
+    # Split Documents
+    # ---------------------
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=1000,
         chunk_overlap=150
     )
+
     chunks = splitter.split_documents(all_docs)
 
-    # Create vector DB (NO persist)
+    # ✅ CRITICAL FIX (avoid empty embeddings error)
+    if not chunks:
+        raise ValueError("No text could be extracted from uploaded PDFs")
+
+    # Optional debug
+    print(f"Total chunks created: {len(chunks)}")
+
+    # ---------------------
+    # Create Vector DB (in-memory)
+    # ---------------------
     vectordb = Chroma.from_documents(
         documents=chunks,
         embedding=embedding
@@ -81,6 +101,7 @@ def answer_question(vectordb, query):
 
     answer = response["result"]
 
+    # Extract unique source file names
     sources = list(set([
         doc.metadata.get("source", "Unknown")
         for doc in response["source_documents"]
