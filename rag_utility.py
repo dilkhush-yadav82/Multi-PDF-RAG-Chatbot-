@@ -67,7 +67,7 @@ def process_documents(uploaded_files):
 
     # ✅ CRITICAL FIX (avoid empty embeddings error)
     if not chunks:
-        raise ValueError("No text could be extracted from uploaded PDFs")
+        raise None
 
     # Optional debug
     print(f"Total chunks created: {len(chunks)}")

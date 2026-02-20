@@ -18,8 +18,13 @@ uploaded_files = st.file_uploader(
 # Process button
 if st.button("Process Documents"):
     if uploaded_files:
-        st.session_state.vectordb = process_documents(uploaded_files)
-        st.success("Documents processed successfully ✅")
+        vectordb = process_documents(uploaded_files)
+
+        if vectordb is None:
+            st.error("❌ No text could be extracted from uploaded PDFs. Try another file.")
+        else:
+            st.session_state.vectordb = vectordb
+            st.success("✅ Documents processed successfully!")
     else:
         st.warning("Please upload at least one PDF")
 
